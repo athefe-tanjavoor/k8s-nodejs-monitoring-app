@@ -1,48 +1,34 @@
 const express = require('express');
-const client = require('prom-client');
+const promClient = require('prom-client');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Create a Registry to register the metrics
-const register = new client.Registry();
+const register = new promClient.Registry();
 
-// Enable collection of default metrics (memory, CPU, etc.)
-client.collectDefaultMetrics({ register });
+promClient.collectDefaultMetrics({ register });
 
-// Custom metric: Counter for incoming requests
-const httpRequestsTotal = new client.Counter({
+const httpRequestCounter = new promClient.Counter({
   name: 'http_requests_total',
   help: 'Total number of HTTP requests',
-  labelNames: ['method', 'route', 'statusCode']
+  labelNames: ['method', 'route', 'statusCode'],
 });
+register.registerMetric(httpRequestCounter);
 
-register.registerMetric(httpRequestsTotal);
-
-// Middleware to count requests
-app.use((req, res, next) => {
-  res.on('finish', () => {
-    httpRequestsTotal.inc({
-      method: req.method,
-      route: req.route ? req.route.path : req.path,
-      statusCode: res.statusCode
-    });
-  });
-  next();
-});
-
-// Basic route
 app.get('/', (req, res) => {
-  res.send('🚀 Hello from Node.js app running on Kubernetes!');
+  httpRequestCounter.labels('GET', '/', '200').inc();
+  res.send('🚀 Hello from Node.js app running on Kubernetes with Prometheus!');
 });
 
-// Metrics route
 app.get('/metrics', async (req, res) => {
-  res.set('Content-Type', register.contentType);
-  res.end(await register.metrics());
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
 });
 
-// Start server
 app.listen(port, () => {
-  console.log(`App listening on port ${port}`);
+  console.log(`✅ Node.js app listening on port ${port}`);
 });
